@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import base64
 
 num=int(str(base64.b64decode((open('pub.key','r').read())).decode('utf-8')))
