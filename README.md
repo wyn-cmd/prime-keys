@@ -8,3 +8,4 @@ Utilises two large prime numbers to create a large number encoded in base64 with
 * '-privatekey': creates a new private key.
 * Having no seed valuse will defualt to the 'seed.txt' file.
 * Having no options will defualt to the 'private.key','prime.key' and export to the 'pub.key' files
+* only 1 option can be used at a time.
