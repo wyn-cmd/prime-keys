@@ -13,12 +13,12 @@ SMALL_PRIMES = [
     331, 337, 347
 ]
 
+# Generate a random integer in the range [2^(n-1)+1, 2^n-1]
 def get_n_bit_random(n):
-    """Generate a random integer in the range [2^(n-1)+1, 2^n-1]."""
     return random.randrange(2**(n - 1) + 1, 2**n - 1)
 
+# Generate a prime candidate not divisible by small pre-generated primes
 def get_low_level_candidate(n):
-    """Generate a prime candidate that is not divisible by small pre-generated primes."""
     while True:
         pc = get_n_bit_random(n)
         for divisor in SMALL_PRIMES:
@@ -27,8 +27,8 @@ def get_low_level_candidate(n):
         else:
             return pc
 
+# Run Miller-Rabin primality test with 18 iterations
 def is_miller_rabin_passed(mrc):
-    """Run Miller-Rabin primality test with 18 iterations."""
     max_divisions_by_two = 0
     ec = mrc - 1
     while ec % 2 == 0:
@@ -49,8 +49,8 @@ def is_miller_rabin_passed(mrc):
             return False
     return True
 
+# Search for a candidate until it passes Miller-Rabin
 def generate_verified_prime(bits):
-    """Keep searching for a candidate until it passes Miller-Rabin."""
     while True:
         candidate = get_low_level_candidate(bits)
         if is_miller_rabin_passed(candidate):
