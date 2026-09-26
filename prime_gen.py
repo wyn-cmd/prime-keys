@@ -1,17 +1,21 @@
 #!/usr/bin/env python
 import sys
+import argparse
 import random
 import base64
 import hashlib
 
 # Pre-generated small primes for initial divisibility screening
 SMALL_PRIMES = [
-    2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 
-    73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 
-    157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233, 
-    239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317, 
+    2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
+    73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151,
+    157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233,
+    239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317,
     331, 337, 347
 ]
+
+DEFAULT_KEY_BITS = 2048
+DEFAULT_PRIVATE_BITS = 3072
 
 # Generate a random integer in the range [2^(n-1)+1, 2^n-1]
 def get_n_bit_random(n):
@@ -56,49 +60,80 @@ def generate_verified_prime(bits):
         if is_miller_rabin_passed(candidate):
             return candidate
 
-def main():
-    # Seed initialization
-    try:
-        seed_str = sys.argv[1]
-        s = hashlib.sha512(seed_str.encode('utf-8')).hexdigest()
-    except IndexError:
-        try:
-            with open('seed.txt', 'r') as f:
-                s = hashlib.sha512(f.read().encode('utf-8')).hexdigest()
-        except Exception:
-            # Fallback to system random if seed.txt is missing
-            s = hashlib.sha512(str(random.random()).encode('utf-8')).hexdigest()
+# A positive integer of at least 16 bits, small enough that Miller-Rabin still
+# means something and large enough that a candidate is worth searching for.
+def bit_size(value):
+    parsed = int(value)
+    if parsed < 16:
+        raise argparse.ArgumentTypeError("must be at least 16 bits")
+    return parsed
 
-    random.seed(int(s, 16))
+def parse_args(argv):
+    parser = argparse.ArgumentParser(
+        description="Generate prime-based keys, or recover one with prime.py.")
+    parser.add_argument("seed", nargs="?",
+                         help="seed text; defaults to the contents of seed.txt")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-gen", action="store_true",
+                        help="generate a random key from the seed only")
+    group.add_argument("-newkey", action="store_true",
+                        help="write a new prime.key")
+    group.add_argument("-privatekey", action="store_true",
+                        help="write a new private.key")
+    parser.add_argument("--bits", type=bit_size, default=None,
+                         help=f"bit size for -newkey/the default key "
+                              f"(default {DEFAULT_KEY_BITS}) or -privatekey "
+                              f"(default {DEFAULT_PRIVATE_BITS})")
+    return parser.parse_args(argv)
 
+def resolve_seed(seed_arg):
+    if seed_arg is not None:
+        return hashlib.sha512(seed_arg.encode("utf-8")).hexdigest()
     try:
-        flag = sys.argv[2]
-        if flag == '-gen':
-            print('---------------------generating random key...---------------------')
-        elif flag == '-newkey':
-            print('---------------------generating prime key...---------------------')
-            prime = generate_verified_prime(2048)
-            with open('prime.key', 'w') as f:
-                f.write(str(prime))
-            print(prime)
-            print('---------------------prime key generated...---------------------')
-            sys.exit()
-        elif flag == '-privatekey':
-            print('---------------------generating private key...---------------------')
-            prime = generate_verified_prime(3072)
-            with open('private.key', 'w') as f:
-                f.write(str(prime))
-            print(prime)
-            print('---------------------private key generated...---------------------')
-            sys.exit()
-        
-        # Default generation for key2
-        prime_candidate = generate_verified_prime(2048)
-    except (IndexError, Exception):
+        with open("seed.txt", "r", encoding="utf-8") as f:
+            return hashlib.sha512(f.read().encode("utf-8")).hexdigest()
+    except OSError:
+        # No seed given and no seed.txt on disk: fall back to system
+        # randomness rather than refusing to run.
+        return hashlib.sha512(str(random.random()).encode("utf-8")).hexdigest()
+
+def main(argv=None):
+    args = parse_args(argv if argv is not None else sys.argv[1:])
+    random.seed(int(resolve_seed(args.seed), 16))
+
+    if args.gen:
+        print('---------------------generating random key...---------------------')
+        return
+
+    if args.newkey:
+        print('---------------------generating prime key...---------------------')
+        prime = generate_verified_prime(args.bits or DEFAULT_KEY_BITS)
+        with open('prime.key', 'w') as f:
+            f.write(str(prime))
+        print(prime)
+        print('---------------------prime key generated...---------------------')
+        return
+
+    if args.privatekey:
+        print('---------------------generating private key...---------------------')
+        prime = generate_verified_prime(args.bits or DEFAULT_PRIVATE_BITS)
+        with open('private.key', 'w') as f:
+            f.write(str(prime))
+        print(prime)
+        print('---------------------private key generated...---------------------')
+        return
+
+    # Default: reuse prime.key as key2 if one already exists on disk, since
+    # that lets a caller re-derive pub.key against a new private.key without
+    # burning a fresh prime every time. Only generate one when there is none.
+    try:
         with open('prime.key', 'r') as f:
             prime_candidate = int(f.read())
+    except FileNotFoundError:
+        prime_candidate = generate_verified_prime(args.bits or DEFAULT_KEY_BITS)
+        with open('prime.key', 'w') as f:
+            f.write(str(prime_candidate))
 
-    # Key calculations
     try:
         with open('private.key', 'r') as f:
             key1 = int(f.read())
